@@ -1,0 +1,156 @@
+From 0694e3e6a258ec0ffe22e402669f05d5101bf550 Mon Sep 17 00:00:00 2001
+From: Oscar A Perez <oscar.perez@ztsystems.com>
+Date: Fri, 24 Jan 2020 16:35:27 +0000
+Subject: [PATCH 3/3] HWNG Test: Dumping RNG data to Sysfs attr on boot for
+ analysis
+
+---
+ drivers/char/hw_random/core.c | 90 ++++++++++++++++++++++++++++++++++-
+ 1 file changed, 88 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/char/hw_random/core.c b/drivers/char/hw_random/core.c
+index 8d53b8ef545c..93085da5c33e 100644
+--- a/drivers/char/hw_random/core.c
++++ b/drivers/char/hw_random/core.c
+@@ -26,6 +26,7 @@
+ #include <linux/uaccess.h>
+ 
+ #define RNG_MODULE_NAME		"hw_random"
++#define MAXRNGDUMPDATA		KMALLOC_MAX_SIZE
+ 
+ static struct hwrng *current_rng;
+ /* the current rng has been explicitly chosen by user via sysfs */
+@@ -38,7 +39,7 @@ static DEFINE_MUTEX(rng_mutex);
+ /* Protects rng read functions, data_avail, rng_buffer and rng_fillbuf */
+ static DEFINE_MUTEX(reading_mutex);
+ static int data_avail;
+-static u8 *rng_buffer, *rng_fillbuf;
++static u8 *rng_buffer, *rng_fillbuf, *hwrngdump;
+ static unsigned short current_quality;
+ static unsigned short default_quality; /* = 0; default to "off" */
+ 
+@@ -61,6 +62,30 @@ static size_t rng_buffer_size(void)
+ 	return SMP_CACHE_BYTES < 32 ? 32 : SMP_CACHE_BYTES;
+ }
+ 
++/* RNG entropy quality testing */
++static void check_hwrng_randomness(struct hwrng *rng)
++{
++	int bytes_read, pos = 0;
++	size_t max = MAXRNGDUMPDATA;
++	const size_t buffsize = rng_buffer_size();
++
++	hwrngdump = kmalloc(MAXRNGDUMPDATA, GFP_KERNEL);
++	if (!hwrngdump)
++		return;
++
++	memset(hwrngdump, 0, MAXRNGDUMPDATA);
++	mutex_lock(&reading_mutex);
++	do {
++		bytes_read = rng_get_data(rng, rng_buffer, buffsize, 1);
++		if (bytes_read <= 0 || bytes_read > buffsize)
++			break;
++		memcpy(hwrngdump + pos, rng_buffer, bytes_read);
++		pos += bytes_read;
++		max -= bytes_read;
++	} while (max >= buffsize);
++	mutex_unlock(&reading_mutex);
++}
++
+ static void add_early_randomness(struct hwrng *rng)
+ {
+ 	int bytes_read;
+@@ -405,7 +430,56 @@ static struct attribute *rng_dev_attrs[] = {
+ 	NULL
+ };
+ 
+-ATTRIBUTE_GROUPS(rng_dev);
++
++static ssize_t bin_attr_hwrng_dump_read(struct file *filp, struct kobject *kobj,
++				    struct bin_attribute *attr,
++				    char *buf, loff_t pos, size_t count)
++{
++	size_t maxcnt;
++
++	if (!hwrngdump)
++		return 0;
++
++	if (pos >= MAXRNGDUMPDATA)
++		return 0;
++
++	if (count < sizeof(u32))
++		return -EINVAL;
++
++	if (pos + count > MAXRNGDUMPDATA)
++		maxcnt = MAXRNGDUMPDATA - pos;
++	else
++		maxcnt = count;
++
++	memcpy(buf, hwrngdump + pos, maxcnt);
++
++	return maxcnt;
++}
++
++/* read only permission, root only */
++static struct bin_attribute bin_attr_ro_root_hwrng_dump = {
++	.attr	= {
++		.name	= "rng_dump",
++		.mode	= 0400,
++	},
++	.size	= MAXRNGDUMPDATA,
++	.read	= bin_attr_hwrng_dump_read,
++};
++
++static struct bin_attribute *hwrng_dump_bin_ro_root_attributes[] = {
++	&bin_attr_ro_root_hwrng_dump,
++	NULL,
++};
++
++static const struct attribute_group rng_dev_group = {
++	.attrs = rng_dev_attrs,
++	.bin_attrs = hwrng_dump_bin_ro_root_attributes,
++};
++
++static const struct attribute_group *rng_dev_groups[] = {
++	&rng_dev_group,
++	NULL,
++};
+ 
+ static void __exit unregister_miscdev(void)
+ {
+@@ -496,6 +570,13 @@ int hwrng_register(struct hwrng *rng)
+ 			goto out_unlock;
+ 	}
+ 
++	/*
++	 * Dump a large amount of bits to a binary attribute
++	 * called 'rng_dump' so the entropy quality of this rng
++	 * can be tested.
++	 */
++	check_hwrng_randomness(rng);
++
+ 	if (old_rng && !rng->init) {
+ 		/*
+ 		 * Use a new device's input to add some randomness to
+@@ -601,6 +682,9 @@ static int __init hwrng_modinit(void)
+ 	if (ret) {
+ 		kfree(rng_fillbuf);
+ 		kfree(rng_buffer);
++		if (hwrngdump)
++			kfree(hwrngdump);
++
+ 	}
+ 
+ 	return ret;
+@@ -610,6 +694,8 @@ static void __exit hwrng_modexit(void)
+ {
+ 	mutex_lock(&rng_mutex);
+ 	BUG_ON(current_rng);
++	if (hwrngdump)
++		kfree(hwrngdump);
+ 	kfree(rng_buffer);
+ 	kfree(rng_fillbuf);
+ 	mutex_unlock(&rng_mutex);
+-- 
+2.17.1
+

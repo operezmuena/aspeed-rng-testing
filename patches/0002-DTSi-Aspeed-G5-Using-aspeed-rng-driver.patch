@@ -1,0 +1,32 @@
+From 7a3653cc77feee32b9fdc8345966a22c82811f1a Mon Sep 17 00:00:00 2001
+From: Oscar A Perez <oscar.perez@ztsystems.com>
+Date: Fri, 24 Jan 2020 16:32:49 +0000
+Subject: [PATCH 2/3] DTSi: Aspeed G5: Using aspeed-rng driver
+
+---
+ arch/arm/boot/dts/aspeed-g5.dtsi | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm/boot/dts/aspeed-g5.dtsi b/arch/arm/boot/dts/aspeed-g5.dtsi
+index 6580b232771e..09952929476b 100644
+--- a/arch/arm/boot/dts/aspeed-g5.dtsi
++++ b/arch/arm/boot/dts/aspeed-g5.dtsi
+@@ -237,11 +237,12 @@
+ 				};
+ 			};
+ 
+-			rng: hwrng@1e6e2078 {
+-				compatible = "timeriomem_rng";
+-				reg = <0x1e6e2078 0x4>;
++			rng: hwrng@1e6e2074 {
++				compatible = "aspeed,aspeed-rng";
++				reg = <0x1e6e2074 0x8>;
+ 				period = <1>;
+ 				quality = <100>;
++				mode = <7>;
+ 			};
+ 
+ 			gfx: display@1e6e6000 {
+-- 
+2.17.1
+
