@@ -1,0 +1,31 @@
+From f4449a415c90adc466562d88b99e5ff9dadfee6d Mon Sep 17 00:00:00 2001
+From: Oscar A Perez <oscar.perez@ztsystems.com>
+Date: Tue, 28 Jan 2020 20:37:24 +0000
+Subject: [PATCH] Testing timeriomem rng mode
+
+---
+ arch/arm/boot/dts/aspeed-g5.dtsi | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/boot/dts/aspeed-g5.dtsi b/arch/arm/boot/dts/aspeed-g5.dtsi
+index bfe7cb80f1ed..851879048ed3 100644
+--- a/arch/arm/boot/dts/aspeed-g5.dtsi
++++ b/arch/arm/boot/dts/aspeed-g5.dtsi
+@@ -240,9 +240,13 @@
+ 
+ 			rng: hwrng@1e6e2078 {
+ 				compatible = "timeriomem_rng";
+-				reg = <0x1e6e2078 0x4>;
++				reg = <0x1e6e2078 0x4>, <0x1e6e2074 0x4>;
++				reg-names = "hwrng_data", "hwrng_control";
+ 				period = <1>;
+ 				quality = <100>;
++				mode = <6>;
++				mode-mask = <0xe>;
++				mode-shift = <1>;
+ 			};
+ 
+ 			gfx: display@1e6e6000 {
+-- 
+2.17.1
+
